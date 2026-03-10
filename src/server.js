@@ -21,6 +21,7 @@ app.use("/api/users", userRoutes)
 app.use("/api/clientes", clienteRoutes)
 app.use("/api/creditos", creditoRoutes)   // 
 // 🔹 Conexión MongoDB
+// 🔹 Conexión MongoDB
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
@@ -30,7 +31,7 @@ mongoose
     console.error("❌ Error MongoDB:", err)
   })
 
-const PORT = 3000
+const PORT = process.env.PORT || 3000
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en puerto ${PORT}`)
