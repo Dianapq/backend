@@ -10,7 +10,10 @@ import creditoRoutes from "./routes/credito.routes.js"
 import officeRoutes from "./routes/oficina.routes.js"
 import superadminRoutes from "./routes/Superadmin.routes.js"
 
-dotenv.config()
+//tenv.config()
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config()
+}
 
 const app = express()
 
