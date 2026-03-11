@@ -1,7 +1,7 @@
 import express from "express"
 import mongoose from "mongoose"
 import cors from "cors"
-import dotenv from "dotenv"
+
 
 import authRoutes from "./routes/auth.routes.js"
 import userRoutes from "./routes/userRoutes.js"
@@ -10,10 +10,6 @@ import creditoRoutes from "./routes/credito.routes.js"
 import officeRoutes from "./routes/oficina.routes.js"
 import superadminRoutes from "./routes/Superadmin.routes.js"
 
-//tenv.config()
-if (process.env.NODE_ENV !== 'production') {
-  dotenv.config()
-}
 
 const app = express()
 
