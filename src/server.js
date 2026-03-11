@@ -7,6 +7,8 @@ import authRoutes from "./routes/auth.routes.js"
 import userRoutes from "./routes/userRoutes.js"
 import clienteRoutes from "./routes/cliente.routes.js"
 import creditoRoutes from "./routes/credito.routes.js"
+import officeRoutes from "./routes/oficina.routes.js"
+import superadminRoutes from "./routes/Superadmin.routes.js"
 
 dotenv.config()
 
@@ -19,8 +21,10 @@ app.use(express.json())
 app.use("/api/auth", authRoutes)
 app.use("/api/users", userRoutes)
 app.use("/api/clientes", clienteRoutes)
-app.use("/api/creditos", creditoRoutes)   // 
-// 🔹 Conexión MongoDB
+app.use("/api/creditos", creditoRoutes) 
+app.use("/api/oficinas", officeRoutes)  
+app.use("/api/superadmin", superadminRoutes)
+
 // 🔹 Conexión MongoDB
 mongoose
   .connect(process.env.MONGO_URI)

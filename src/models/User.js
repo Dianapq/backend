@@ -17,16 +17,18 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true },
     rol: {
       type: String,
-      enum: ["ADMIN", "COBRADOR"],
+      enum: ["SUPERADMIN", "ADMIN", "COBRADOR"],  
       required: true
     },
-
-    // NUEVO CAMPO
     habilitado: {
       type: Boolean,
       default: true
+    },
+    officeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Office",
+      default: null   //
     }
-
   },
   { timestamps: true }
 )

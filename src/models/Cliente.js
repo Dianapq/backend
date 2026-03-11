@@ -10,7 +10,6 @@ const clienteSchema = new mongoose.Schema({
   cedula: {
     type: String,
     required: true,
-    unique: true,
     trim: true
   },
 
@@ -28,10 +27,19 @@ const clienteSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     required: true
+  },
+
+  officeId: {                                   // ← nuevo: aísla clientes por tenant
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Office",
+    required: true
   }
 
 }, {
   timestamps: true
 })
+
+// Cédula única POR oficina (no global)
+clienteSchema.index({ cedula: 1, officeId: 1 }, { unique: true })
 
 export default mongoose.model("Cliente", clienteSchema)

@@ -1,9 +1,10 @@
-import express from "express"
-import { loginAdmin, loginCobrador } from "../controllers/auth.controller.js"
+import { Router } from "express"
+import { loginAdmin, loginCobrador, loginSuperAdmin } from "../controllers/auth.controller.js"
 
-const router = express.Router()
+const router = Router()
 
 router.post("/login-admin", loginAdmin)
 router.post("/login-cobrador", loginCobrador)
+router.post("/login-superadmin", loginSuperAdmin)
 
 export default router

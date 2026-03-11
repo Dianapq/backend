@@ -58,7 +58,13 @@ const creditoSchema = new mongoose.Schema({
 
   cobradorId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Cobrador",
+    ref: "User",         
+    required: true
+  },
+
+  officeId: {             
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Office",
     required: true
   }
 

@@ -5,32 +5,33 @@ import { verifyToken } from "../middlewares/auth.middleware.js"
 
 const router = express.Router()
 
-// Crear usuario
+// Crear usuario (officeId se asigna en el controller desde el token)
 router.post("/", crearUsuario)
 
-// Obtener todos los usuarios
+// Obtener cobradores SOLO de la oficina del admin autenticado
 router.get("/", verifyToken, async (req, res) => {
   try {
-    const users = await User.find()
+    const users = await User.find({ officeId: req.user.officeId })  // ← filtro multitenant
     res.json(users)
   } catch (error) {
     res.status(500).json({ message: "Error obteniendo usuarios" })
   }
 })
 
-
-// NUEVA RUTA → habilitar / deshabilitar cobrador
+// Habilitar / deshabilitar cobrador (solo si pertenece a la misma oficina)
 router.put("/habilitar/:id", verifyToken, async (req, res) => {
   try {
-
     const { id } = req.params
     const { habilitado } = req.body
 
-    const user = await User.findByIdAndUpdate(
-      id,
+    // Verificar que el cobrador pertenece a la oficina del admin
+    const user = await User.findOneAndUpdate(
+      { _id: id, officeId: req.user.officeId },  // ← filtro multitenant
       { habilitado },
       { new: true }
     )
+
+    if (!user) return res.status(404).json({ message: "Usuario no encontrado en esta oficina" })
 
     res.json(user)
 
