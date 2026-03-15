@@ -6,7 +6,7 @@ import { verifyToken } from "../middlewares/auth.middleware.js"
 const router = express.Router()
 
 // Crear usuario (officeId se asigna en el controller desde el token)
-router.post("/", crearUsuario)
+router.post("/", verifyToken, crearUsuario)
 
 // Obtener cobradores SOLO de la oficina del admin autenticado
 router.get("/", verifyToken, async (req, res) => {
