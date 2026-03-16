@@ -1,6 +1,3 @@
-// scripts/crearSuperAdmin.js
-// Ejecutar UNA sola vez: node scripts/crearSuperAdmin.js
-
 import mongoose from "mongoose"
 import dotenv from "dotenv"
 import User from "../src/models/User.js"
@@ -20,8 +17,8 @@ await User.create({
   cedula: "000000000",
   celular: "000000000",
   direccion: "Sistema",
-  email: "superadmin@cobranzas.com",   // ← cambiar antes de ejecutar
-  password: "Gotas123",         // ← cambiar antes de ejecutar
+  email: "superadmin@cobranzas.com",   
+  password: "Gotas123",         
   rol: "SUPERADMIN",
   officeId: null,
   habilitado: true
