@@ -17,7 +17,7 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true },
     rol: {
       type: String,
-      enum: ["SUPERADMIN", "ADMIN", "COBRADOR"],  
+      enum: ["SUPERADMIN", "ADMIN", "COBRADOR"],
       required: true
     },
     habilitado: {
@@ -27,8 +27,10 @@ const userSchema = new mongoose.Schema(
     officeId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Office",
-      default: null   //
-    }
+      default: null
+    },
+    telegramChatId: { type: String, default: null },  // ← nuevo
+    telegramToken:  { type: String, default: null }   // ← nuevo
   },
   { timestamps: true }
 )
