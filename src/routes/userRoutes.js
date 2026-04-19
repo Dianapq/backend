@@ -40,4 +40,23 @@ router.put("/habilitar/:id", verifyToken, async (req, res) => {
   }
 })
 
+// En userRoutes.js
+router.post("/:id/telegram-token", verifyToken, async (req, res) => {
+  try {
+    const cobrador = await User.findOne({ _id: req.params.id, officeId: req.user.officeId, rol: "COBRADOR" })
+    if (!cobrador) return res.status(404).json({ message: "Cobrador no encontrado" })
+
+    const token = Math.random().toString(36).substring(2, 10)
+    cobrador.telegramToken = token
+    await cobrador.save()
+
+    res.json({ token, comando: `/start ${token}` })
+  } catch (error) {
+    res.status(500).json({ message: "Error generando token" })
+  }
+})
+
+
+
+
 export default router
