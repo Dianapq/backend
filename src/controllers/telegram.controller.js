@@ -159,6 +159,7 @@ const handleMenu = async (chatId) => {
         [{ text: "🔍 Consultar Cliente" }, { text: "💳 Registrar Pago" }]
       ],
       resize_keyboard: true
+      persistent: true 
     }
   })
 }
