@@ -65,6 +65,19 @@ export const handleWebhook = async (req, res) => {
     return
   }
 
+   if (text === "🚪 Cerrar Sesión") {
+    const cobrador = await getCobrador(chatId)
+    if (cobrador) {
+      cobrador.telegramChatId = null
+      await cobrador.save()
+    }
+    clearSesion(chatId)
+    await sendMessage(chatId, "👋 Sesión cerrada. Escribe /start para volver a iniciar sesión.", {
+      reply_markup: { remove_keyboard: true }
+    })
+    return
+  }
+
   // ─── FLUJO DE LOGIN ──────────────────────────────────
   if (sesion.paso === "login_email") {
     setSesion(chatId, { paso: "login_password", email: text })
@@ -157,9 +170,10 @@ const handleMenu = async (chatId) => {
       keyboard: [
         [{ text: "👤 Crear Cliente" }, { text: "💰 Crear Crédito" }],
         [{ text: "🔍 Consultar Cliente" }, { text: "💳 Registrar Pago" }]
+        [{ text: "🚪 Cerrar Sesión" }] 
       ],
-      resize_keyboard: true
-      persistent: true 
+      resize_keyboard: true,
+      //persistent: true 
     }
   })
 }
