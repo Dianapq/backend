@@ -169,8 +169,9 @@ const handleMenu = async (chatId) => {
     reply_markup: {
       keyboard: [
         [{ text: "👤 Crear Cliente" }, { text: "💰 Crear Crédito" }],
-        [{ text: "🔍 Consultar Cliente" }, { text: "💳 Registrar Pago" }]
+        [{ text: "🔍 Consultar Cliente" }, { text: "💳 Registrar Pago" }],
         [{ text: "🚪 Cerrar Sesión" }] 
+
       ],
       resize_keyboard: true,
       //persistent: true 
