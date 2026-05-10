@@ -8,7 +8,8 @@ import clienteRoutes from "./routes/cliente.routes.js"
 import creditoRoutes from "./routes/credito.routes.js"
 import officeRoutes from "./routes/oficina.routes.js"
 import superadminRoutes from "./routes/Superadmin.routes.js"
-import telegramRoutes from "./routes/telegram.routes.js"  // ← nuevo
+import telegramRoutes from "./routes/telegram.routes.js"
+import pdfRoutes from "./routes/pdf.routes.js"
 
 const app = express()
 
@@ -22,7 +23,8 @@ app.use("/api/clientes", clienteRoutes)
 app.use("/api/creditos", creditoRoutes)
 app.use("/api/oficinas", officeRoutes)
 app.use("/api/superadmin", superadminRoutes)
-app.use("/api/telegram", telegramRoutes)  // ← nuevo
+app.use("/api/telegram", telegramRoutes)  
+app.use("/api/documentos", pdfRoutes)
 
 // 🔹 Conexión MongoDB
 mongoose
