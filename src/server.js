@@ -1,6 +1,8 @@
 import express from "express"
 import mongoose from "mongoose"
 import cors from "cors"
+import pdfParse from "pdf-parse"
+import Documento from "../models/Documento.js"
 
 import authRoutes from "./routes/auth.routes.js"
 import userRoutes from "./routes/userRoutes.js"

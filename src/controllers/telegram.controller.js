@@ -2,8 +2,8 @@ import Cliente from "../models/Cliente.js"
 import Credito from "../models/Credito.js"
 import User from "../models/User.js"
 import bcrypt from "bcryptjs"
-//nuevo 
-import { guardarVector, buscarVectores } from "../config/pinecone.js"
+import pdfParse from "pdf-parse"
+import Documento from "../models/Documento.js"
 
 const TOKEN = process.env.TELEGRAM_TOKEN
 const API = `https://api.telegram.org/bot${TOKEN}`
@@ -28,6 +28,36 @@ const getCobrador = async (chatId) => {
   return await User.findOne({ telegramChatId: String(chatId), rol: "COBRADOR", habilitado: true })
 }
 
+// ─── Buscar en documentos MongoDB Atlas Search ───────────
+const buscarEnDocumentos = async (pregunta, officeId) => {
+  try {
+    const resultados = await Documento.aggregate([
+      {
+        $search: {
+          index: "documentos_search",
+          text: {
+            query: pregunta,
+            path: "texto",
+            fuzzy: { maxEdits: 1 }
+          }
+        }
+      },
+      { $match: { officeId: officeId } },
+      {
+        $project: {
+          filename: 1,
+          score: { $meta: "searchScore" },
+          extracto: { $substrCP: ["$texto", 0, 300] }
+        }
+      },
+      { $limit: 3 }
+    ])
+    return resultados
+  } catch (err) {
+    return []
+  }
+}
+
 // ─── WEBHOOK PRINCIPAL ───────────────────────────────────
 export const handleWebhook = async (req, res) => {
   res.sendStatus(200)
@@ -40,6 +70,13 @@ export const handleWebhook = async (req, res) => {
 
   if (!chatId) return
 
+  // ─── RECIBIR PDF ─────────────────────────────────────
+  const documento = body.message?.document
+  if (documento) {
+    await recibirPDF(chatId, documento)
+    return
+  }
+
   if (callbackData) {
     await handleCallback(chatId, callbackData)
     return
@@ -50,24 +87,17 @@ export const handleWebhook = async (req, res) => {
   const sesion = getSesion(chatId)
 
   // ─── COMANDOS ────────────────────────────────────────
-  if (text === "/start") {
-    await handleStart(chatId)
-    return
-  }
+  if (text === "/start") { await handleStart(chatId); return }
+  if (text === "/menu") { await handleMenu(chatId); return }
 
-  if (text === "/menu") {
-    await handleMenu(chatId)
-    return
-  }
-
-  if (text === "/cancelar" || text === " Cancelar") {
+  if (text === "/cancelar" || text === "❌ Cancelar") {
     clearSesion(chatId)
     await sendMessage(chatId, "Operación cancelada.")
     await handleMenu(chatId)
     return
   }
 
-   if (text === "🚪 Cerrar Sesión") {
+  if (text === "🚪 Cerrar Sesión") {
     const cobrador = await getCobrador(chatId)
     if (cobrador) {
       cobrador.telegramChatId = null
@@ -104,23 +134,16 @@ export const handleWebhook = async (req, res) => {
   if (text === "🔍 Consultar Cliente") { await iniciarConsultar(chatId); return }
   if (text === "💳 Registrar Pago") { await iniciarPago(chatId); return }
 
-  // ─── BÚSQUEDA VECTORIAL NUEVOB────────────────────────────
+  // ─── BÚSQUEDA EN DOCUMENTOS ──────────────────────────
   const cobrador = await getCobrador(chatId)
   if (cobrador) {
-    const resultados = await buscarVectores(
-      text,
-      { officeId: String(cobrador.officeId) },
-      5
-    )
-
+    const resultados = await buscarEnDocumentos(text, cobrador.officeId)
     if (resultados.length > 0) {
-      let respuesta = `🔍 <b>Encontré esto relacionado con "${text}":</b>\n\n`
-
+      let respuesta = `🔍 <b>Encontré esto en los documentos:</b>\n\n`
       for (const r of resultados) {
-        respuesta += `📌 ${r.fields.text}\n`
-        respuesta += `📊 Relevancia: ${Math.round(r.score * 100)}%\n\n`
+        respuesta += `📄 <b>${r.filename}</b>\n`
+        respuesta += `${r.extracto}...\n\n`
       }
-
       await sendMessage(chatId, respuesta)
       return
     }
@@ -129,14 +152,61 @@ export const handleWebhook = async (req, res) => {
   await sendMessage(chatId, 'No entendí ese comando. Escribe /menu para ver las opciones.')
 }
 
-// ─── /start — pide email ─────────────────────────────────
-const handleStart = async (chatId) => {
-  // Si ya está vinculado va directo al menú
+// ─── RECIBIR PDF POR TELEGRAM ────────────────────────────
+const recibirPDF = async (chatId, documento) => {
   const cobrador = await getCobrador(chatId)
-  if (cobrador) {
-    await handleMenu(chatId)
+  if (!cobrador) {
+    await sendMessage(chatId, "⚠️ No estás vinculado. Escribe /start.")
     return
   }
+
+  if (!documento.mime_type || documento.mime_type !== "application/pdf") {
+    await sendMessage(chatId, "❌ Solo se aceptan archivos PDF.")
+    return
+  }
+
+  await sendMessage(chatId, "📄 Procesando PDF... espera un momento.")
+
+  try {
+    const fileRes = await fetch(`${API}/getFile?file_id=${documento.file_id}`)
+    const fileData = await fileRes.json()
+    const filePath = fileData.result.file_path
+    const fileUrl = `https://api.telegram.org/file/bot${TOKEN}/${filePath}`
+
+    const pdfRes = await fetch(fileUrl)
+    const buffer = Buffer.from(await pdfRes.arrayBuffer())
+
+    const data = await pdfParse(buffer)
+    const texto = data.text
+
+    if (!texto || texto.trim().length === 0) {
+      await sendMessage(chatId, "❌ El PDF no tiene texto extraíble.")
+      return
+    }
+
+    await Documento.create({
+      oficina: String(cobrador.officeId),
+      officeId: cobrador.officeId,
+      filename: documento.file_name || "documento.pdf",
+      texto
+    })
+
+    await sendMessage(chatId,
+      `✅ PDF <b>${documento.file_name}</b> procesado.\n` +
+      `📝 ${texto.length} caracteres extraídos.\n\n` +
+      `Ahora puedes buscar información escribiendo tu pregunta.`
+    )
+
+  } catch (err) {
+    console.error("Error procesando PDF:", err)
+    await sendMessage(chatId, "❌ Error procesando el PDF. Intenta de nuevo.")
+  }
+}
+
+// ─── /start ──────────────────────────────────────────────
+const handleStart = async (chatId) => {
+  const cobrador = await getCobrador(chatId)
+  if (cobrador) { await handleMenu(chatId); return }
 
   setSesion(chatId, { paso: "login_email" })
   await sendMessage(chatId,
@@ -167,17 +237,16 @@ const verificarLogin = async (chatId, email, password) => {
       return
     }
 
-    // Vincular chatId
     cobrador.telegramChatId = String(chatId)
     await cobrador.save()
 
     clearSesion(chatId)
-    await sendMessage(chatId, ` <b>¡Bienvenido ${cobrador.nombre}!</b>\n\nYa estás vinculado correctamente.`)
+    await sendMessage(chatId, `✅ <b>¡Bienvenido ${cobrador.nombre}!</b>\n\nYa estás vinculado correctamente.`)
     await handleMenu(chatId)
 
   } catch (err) {
     clearSesion(chatId)
-    await sendMessage(chatId, " Error al verificar credenciales. Intenta de nuevo con /start.")
+    await sendMessage(chatId, "❌ Error al verificar credenciales. Intenta de nuevo con /start.")
   }
 }
 
@@ -185,7 +254,7 @@ const verificarLogin = async (chatId, email, password) => {
 const handleMenu = async (chatId) => {
   const cobrador = await getCobrador(chatId)
   if (!cobrador) {
-    await sendMessage(chatId, " No estás vinculado. Escribe /start para iniciar sesión.")
+    await sendMessage(chatId, "⚠️ No estás vinculado. Escribe /start para iniciar sesión.")
     return
   }
 
@@ -194,11 +263,9 @@ const handleMenu = async (chatId) => {
       keyboard: [
         [{ text: "👤 Crear Cliente" }, { text: "💰 Crear Crédito" }],
         [{ text: "🔍 Consultar Cliente" }, { text: "💳 Registrar Pago" }],
-        [{ text: "🚪 Cerrar Sesión" }] 
-
+        [{ text: "🚪 Cerrar Sesión" }]
       ],
-      resize_keyboard: true,
-      //persistent: true 
+      resize_keyboard: true
     }
   })
 }
@@ -206,7 +273,7 @@ const handleMenu = async (chatId) => {
 // ─── CREAR CLIENTE ────────────────────────────────────────
 const iniciarCrearCliente = async (chatId) => {
   const cobrador = await getCobrador(chatId)
-  if (!cobrador) { await sendMessage(chatId, " No estás vinculado. Escribe /start."); return }
+  if (!cobrador) { await sendMessage(chatId, "⚠️ No estás vinculado. Escribe /start."); return }
   setSesion(chatId, { paso: "cliente_nombre", cobradorId: cobrador._id, officeId: cobrador.officeId })
   await sendMessage(chatId, "👤 <b>Nuevo Cliente</b>\n\nEscribe el <b>nombre completo</b>:")
 }
@@ -214,7 +281,7 @@ const iniciarCrearCliente = async (chatId) => {
 // ─── CREAR CRÉDITO ────────────────────────────────────────
 const iniciarCrearCredito = async (chatId) => {
   const cobrador = await getCobrador(chatId)
-  if (!cobrador) { await sendMessage(chatId, " No estás vinculado. Escribe /start."); return }
+  if (!cobrador) { await sendMessage(chatId, "⚠️ No estás vinculado. Escribe /start."); return }
 
   const clientes = await Cliente.find({ cobrador: cobrador._id, officeId: cobrador.officeId })
   if (clientes.length === 0) {
@@ -231,7 +298,7 @@ const iniciarCrearCredito = async (chatId) => {
 // ─── CONSULTAR CLIENTE ────────────────────────────────────
 const iniciarConsultar = async (chatId) => {
   const cobrador = await getCobrador(chatId)
-  if (!cobrador) { await sendMessage(chatId, " No estás vinculado. Escribe /start."); return }
+  if (!cobrador) { await sendMessage(chatId, "⚠️ No estás vinculado. Escribe /start."); return }
 
   const clientes = await Cliente.find({ cobrador: cobrador._id, officeId: cobrador.officeId })
   if (clientes.length === 0) {
@@ -276,7 +343,7 @@ const handleCallback = async (chatId, data) => {
   if (data.startsWith("credito_cliente_")) {
     const clienteId = data.replace("credito_cliente_", "")
     setSesion(chatId, { paso: "credito_monto", clienteId })
-    await sendMessage(chatId, " Escribe el <b>monto a prestar</b>:")
+    await sendMessage(chatId, "💵 Escribe el <b>monto a prestar</b>:")
     return
   }
 
@@ -299,7 +366,7 @@ const handleCallback = async (chatId, data) => {
   if (data.startsWith("pago_credito_")) {
     const creditoId = data.replace("pago_credito_", "")
     setSesion(chatId, { paso: "pago_monto", creditoId })
-    await sendMessage(chatId, " Escribe el <b>monto del abono</b>:")
+    await sendMessage(chatId, "💵 Escribe el <b>monto del abono</b>:")
     return
   }
 }
@@ -311,50 +378,36 @@ const handlePaso = async (chatId, text, sesion) => {
 
   if (sesion.paso === "cliente_nombre") {
     setSesion(chatId, { paso: "cliente_cedula", nombre: text })
-    await sendMessage(chatId, " Escribe la <b>cédula</b>:")
+    await sendMessage(chatId, "📋 Escribe la <b>cédula</b>:")
     return
   }
 
   if (sesion.paso === "cliente_cedula") {
     setSesion(chatId, { paso: "cliente_telefono", cedula: text })
-    await sendMessage(chatId, " Escribe el <b>teléfono</b> (o - para omitir):")
+    await sendMessage(chatId, "📞 Escribe el <b>teléfono</b> (o - para omitir):")
     return
   }
 
   if (sesion.paso === "cliente_telefono") {
     setSesion(chatId, { paso: "cliente_direccion", telefono: text === "-" ? "" : text })
-    await sendMessage(chatId, " Escribe la <b>dirección</b> (o - para omitir):")
+    await sendMessage(chatId, "📍 Escribe la <b>dirección</b> (o - para omitir):")
     return
   }
 
   if (sesion.paso === "cliente_direccion") {
     const s = getSesion(chatId)
-
-  //nuevo
-  /*try {
+    try {
       await Cliente.create({
         nombre: s.nombre, cedula: s.cedula, telefono: s.telefono,
         direccion: text === "-" ? "" : text,
         cobrador: cobrador._id, officeId: cobrador.officeId
       })
-    */
-      // ← nuevo: guardar en Pinecone
-      await guardarVector(
-        nuevoCliente._id,
-        `Cliente ${s.nombre} cédula ${s.cedula} teléfono ${s.telefono} dirección ${text}`,
-        {
-          tipo: "cliente",
-          mongoId: String(nuevoCliente._id),
-          officeId: String(cobrador.officeId)
-        }
-      )
-
       clearSesion(chatId)
-      await sendMessage(chatId, ` Cliente <b>${s.nombre}</b> creado correctamente.`)
+      await sendMessage(chatId, `✅ Cliente <b>${s.nombre}</b> creado correctamente.`)
       await handleMenu(chatId)
     } catch (err) {
       clearSesion(chatId)
-      await sendMessage(chatId, " Error creando cliente. ¿La cédula ya existe?")
+      await sendMessage(chatId, `❌ Error: ${err.message}`)
       await handleMenu(chatId)
     }
     return
@@ -365,7 +418,7 @@ const handlePaso = async (chatId, text, sesion) => {
     if (isNaN(monto) || monto <= 0) { await sendMessage(chatId, "❌ Monto inválido:"); return }
     const montoAPagar = monto * 1.30
     setSesion(chatId, { paso: "credito_fecha", montoPrestamo: monto, montoAPagar })
-    await sendMessage(chatId, ` Total con 30% de interés: <b>$${montoAPagar.toFixed(0)}</b>\n\nEscribe la <b>fecha de pago</b> (YYYY-MM-DD):`)
+    await sendMessage(chatId, `📅 Total con 30% de interés: <b>$${montoAPagar.toFixed(0)}</b>\n\nEscribe la <b>fecha de pago</b> (YYYY-MM-DD):`)
     return
   }
 
@@ -381,27 +434,13 @@ const handlePaso = async (chatId, text, sesion) => {
       await handleMenu(chatId)
       return
     }
-    /*
+
     try {
       await Credito.create({
         clienteId: s.clienteId, cobradorId: cobrador._id, officeId: cobrador.officeId,
         montoPrestamo: s.montoPrestamo, montoAPagar: s.montoAPagar,
         saldoPendiente: s.montoAPagar, fechaPago: fecha, abonos: []
       })
-      */
-      
-      // ← nuevo: guardar en Pinecone
-      await guardarVector(
-        nuevoCredito._id,
-        `Crédito de ${s.montoPrestamo} pesos debe pagar ${s.montoAPagar} vence ${fecha}`,
-        {
-          tipo: "credito",
-          mongoId: String(nuevoCredito._id),
-          officeId: String(cobrador.officeId)
-        }
-      )
-
-
       clearSesion(chatId)
       await sendMessage(chatId, `✅ Crédito de <b>$${s.montoPrestamo}</b> creado correctamente.`)
       await handleMenu(chatId)
