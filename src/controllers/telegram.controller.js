@@ -2,7 +2,7 @@ import Cliente from "../models/Cliente.js"
 import Credito from "../models/Credito.js"
 import User from "../models/User.js"
 import bcrypt from "bcryptjs"
-import pdfParse from "pdf-parse"
+import { default as pdfParse } from "pdf-parse"
 import Documento from "../models/Documento.js"
 
 const TOKEN = process.env.TELEGRAM_TOKEN
