@@ -2,9 +2,8 @@ import Cliente from "../models/Cliente.js"
 import Credito from "../models/Credito.js"
 import User from "../models/User.js"
 import bcrypt from "bcryptjs"
-import { createRequire } from "module"
-const require = createRequire(import.meta.url)
-const pdfParse = require("pdf-parse")
+import pkg from "pdf-parse/lib/pdf-parse.js"
+const pdfParse = pkg
 import Documento from "../models/Documento.js"
 
 const TOKEN = process.env.TELEGRAM_TOKEN

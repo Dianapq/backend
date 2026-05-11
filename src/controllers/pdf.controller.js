@@ -1,6 +1,5 @@
-import { createRequire } from "module"
-const require = createRequire(import.meta.url)
-const pdfParse = require("pdf-parse")
+import pkg from "pdf-parse/lib/pdf-parse.js"
+const pdfParse = pkg
 import Documento from "../models/Documento.js"
 import mongoose from "mongoose"
 
