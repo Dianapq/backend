@@ -1,6 +1,10 @@
-import pdfParse from "pdf-parse"
+import { createRequire } from "module"
+const require = createRequire(import.meta.url)
+const pdfParse = require("pdf-parse")
 import Documento from "../models/Documento.js"
 import mongoose from "mongoose"
+
+// resto igual...
 
 // ─── SUBIR PDF ───────────────────────────────────────────
 export const subirPDF = async (req, res) => {
