@@ -2,12 +2,26 @@ import Cliente from "../models/Cliente.js"
 import Credito from "../models/Credito.js"
 import User from "../models/User.js"
 import bcrypt from "bcryptjs"
-import pkg from "pdf-parse/lib/pdf-parse.js"
-const pdfParse = pkg
+import PDFParser from "pdf2json"
 import Documento from "../models/Documento.js"
 
 const TOKEN = process.env.TELEGRAM_TOKEN
 const API = `https://api.telegram.org/bot${TOKEN}`
+
+// ─── Extraer texto del PDF ───────────────────────────────
+const extraerTextoPDF = (buffer) => {
+  return new Promise((resolve, reject) => {
+    const parser = new PDFParser()
+    parser.on("pdfParser_dataReady", (data) => {
+      const texto = data.Pages.map(page =>
+        page.Texts.map(t => decodeURIComponent(t.R[0].T)).join(" ")
+      ).join("\n")
+      resolve(texto)
+    })
+    parser.on("pdfParser_dataError", reject)
+    parser.parseBuffer(buffer)
+  })
+}
 
 // ─── Enviar mensaje simple ───────────────────────────────
 export const sendMessage = async (chatId, text, extra = {}) => {
@@ -71,7 +85,6 @@ export const handleWebhook = async (req, res) => {
 
   if (!chatId) return
 
-  // ─── RECIBIR PDF ─────────────────────────────────────
   const documento = body.message?.document
   if (documento) {
     await recibirPDF(chatId, documento)
@@ -87,7 +100,6 @@ export const handleWebhook = async (req, res) => {
 
   const sesion = getSesion(chatId)
 
-  // ─── COMANDOS ────────────────────────────────────────
   if (text === "/start") { await handleStart(chatId); return }
   if (text === "/menu") { await handleMenu(chatId); return }
 
@@ -111,7 +123,6 @@ export const handleWebhook = async (req, res) => {
     return
   }
 
-  // ─── FLUJO DE LOGIN ──────────────────────────────────
   if (sesion.paso === "login_email") {
     setSesion(chatId, { paso: "login_password", email: text })
     await sendMessage(chatId, "🔑 Ahora escribe tu <b>contraseña</b>:")
@@ -123,19 +134,16 @@ export const handleWebhook = async (req, res) => {
     return
   }
 
-  // ─── FLUJOS CONVERSACIONALES ─────────────────────────
   if (sesion.paso) {
     await handlePaso(chatId, text, sesion)
     return
   }
 
-  // ─── MENÚ POR TEXTO ──────────────────────────────────
   if (text === "👤 Crear Cliente") { await iniciarCrearCliente(chatId); return }
   if (text === "💰 Crear Crédito") { await iniciarCrearCredito(chatId); return }
   if (text === "🔍 Consultar Cliente") { await iniciarConsultar(chatId); return }
   if (text === "💳 Registrar Pago") { await iniciarPago(chatId); return }
 
-  // ─── BÚSQUEDA EN DOCUMENTOS ──────────────────────────
   const cobrador = await getCobrador(chatId)
   if (cobrador) {
     const resultados = await buscarEnDocumentos(text, cobrador.officeId)
@@ -177,8 +185,7 @@ const recibirPDF = async (chatId, documento) => {
     const pdfRes = await fetch(fileUrl)
     const buffer = Buffer.from(await pdfRes.arrayBuffer())
 
-    const data = await pdfParse(buffer)
-    const texto = data.text
+    const texto = await extraerTextoPDF(buffer)
 
     if (!texto || texto.trim().length === 0) {
       await sendMessage(chatId, "❌ El PDF no tiene texto extraíble.")
@@ -208,7 +215,6 @@ const recibirPDF = async (chatId, documento) => {
 const handleStart = async (chatId) => {
   const cobrador = await getCobrador(chatId)
   if (cobrador) { await handleMenu(chatId); return }
-
   setSesion(chatId, { paso: "login_email" })
   await sendMessage(chatId,
     "👋 <b>Bienvenido a Gotas Cobranzas</b>\n\n" +
@@ -240,7 +246,6 @@ const verificarLogin = async (chatId, email, password) => {
 
     cobrador.telegramChatId = String(chatId)
     await cobrador.save()
-
     clearSesion(chatId)
     await sendMessage(chatId, `✅ <b>¡Bienvenido ${cobrador.nombre}!</b>\n\nYa estás vinculado correctamente.`)
     await handleMenu(chatId)
