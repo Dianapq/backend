@@ -8,7 +8,13 @@ const extraerTextoPDF = (buffer) => {
     const parser = new PDFParser()
     parser.on("pdfParser_dataReady", (data) => {
       const texto = data.Pages.map(page =>
-        page.Texts.map(t => decodeURIComponent(t.R[0].T)).join(" ")
+        page.Texts.map(t => {
+          try {
+            return decodeURIComponent(t.R[0].T)
+          } catch {
+            return t.R[0].T  // ← si falla, usa el texto sin decodificar
+          }
+        }).join(" ")
       ).join("\n")
       resolve(texto)
     })
