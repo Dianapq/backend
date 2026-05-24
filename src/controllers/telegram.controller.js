@@ -25,7 +25,7 @@ const extraerTextoPDF = (buffer) => {
   })
 }
 
-const dividirEnChunks = (texto, tamano = 300) => {
+const dividirEnChunks = (texto, tamano = 200) => {
   const palabras = texto.split(" ")
   const chunks = []
   for (let i = 0; i < palabras.length; i += tamano) {
