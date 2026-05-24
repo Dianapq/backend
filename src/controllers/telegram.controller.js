@@ -183,7 +183,7 @@ const recibirPDF = async (chatId, documento) => {
       return
     }
 
-    const chunks = dividirEnChunks(textoCompleto, 300)
+    const chunks = dividirEnChunks(textoCompleto, 200)
 
     for (let i = 0; i < chunks.length; i++) {
       await Documento.create({
