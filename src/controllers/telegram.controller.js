@@ -8,7 +8,6 @@ import Documento from "../models/Documento.js"
 const TOKEN = process.env.TELEGRAM_TOKEN
 const API = `https://api.telegram.org/bot${TOKEN}`
 
-// ─── Extraer texto del PDF ───────────────────────────────
 const extraerTextoPDF = (buffer) => {
   return new Promise((resolve, reject) => {
     const parser = new PDFParser()
@@ -26,7 +25,6 @@ const extraerTextoPDF = (buffer) => {
   })
 }
 
-// ─── Dividir texto en chunks ─────────────────────────────
 const dividirEnChunks = (texto, tamano = 300) => {
   const palabras = texto.split(" ")
   const chunks = []
@@ -37,7 +35,6 @@ const dividirEnChunks = (texto, tamano = 300) => {
   return chunks
 }
 
-// ─── Enviar mensaje simple ───────────────────────────────
 export const sendMessage = async (chatId, text, extra = {}) => {
   await fetch(`${API}/sendMessage`, {
     method: "POST",
@@ -46,18 +43,15 @@ export const sendMessage = async (chatId, text, extra = {}) => {
   })
 }
 
-// ─── Sesiones en memoria ─────────────────────────────────
 const sesiones = {}
 const getSesion = (chatId) => sesiones[chatId] || {}
 const setSesion = (chatId, data) => { sesiones[chatId] = { ...getSesion(chatId), ...data } }
 const clearSesion = (chatId) => { sesiones[chatId] = {} }
 
-// ─── Buscar cobrador vinculado ───────────────────────────
 const getCobrador = async (chatId) => {
   return await User.findOne({ telegramChatId: String(chatId), rol: "COBRADOR", habilitado: true })
 }
 
-// ─── Buscar en documentos MongoDB Atlas Search ───────────
 const buscarEnDocumentos = async (pregunta, officeId) => {
   try {
     const resultados = await Documento.aggregate([
@@ -75,11 +69,12 @@ const buscarEnDocumentos = async (pregunta, officeId) => {
       {
         $project: {
           filename: 1,
+          chunk: 1,
           score: { $meta: "searchScore" },
-          extracto: { $substrCP: ["$texto", 0, 500] }
+          texto: 1
         }
       },
-      { $limit: 3 }
+      { $limit: 1 }
     ])
     return resultados
   } catch (err) {
@@ -87,7 +82,6 @@ const buscarEnDocumentos = async (pregunta, officeId) => {
   }
 }
 
-// ─── WEBHOOK PRINCIPAL ───────────────────────────────────
 export const handleWebhook = async (req, res) => {
   res.sendStatus(200)
 
@@ -153,7 +147,7 @@ export const handleWebhook = async (req, res) => {
       let respuesta = `🔍 <b>Encontré esto en los documentos:</b>\n\n`
       for (const r of resultados) {
         respuesta += `📄 <b>${r.filename}</b>\n`
-        respuesta += `${r.extracto}\n\n`
+        respuesta += `${r.texto}\n\n`
       }
       await sendMessage(chatId, respuesta)
       return
@@ -163,7 +157,6 @@ export const handleWebhook = async (req, res) => {
   await sendMessage(chatId, 'No entendí ese comando. Escribe /menu para ver las opciones.')
 }
 
-// ─── RECIBIR PDF POR TELEGRAM ────────────────────────────
 const recibirPDF = async (chatId, documento) => {
   const cobrador = await getCobrador(chatId)
   if (!cobrador) { await sendMessage(chatId, "⚠️ No estás vinculado. Escribe /start."); return }
@@ -183,7 +176,6 @@ const recibirPDF = async (chatId, documento) => {
 
     const pdfRes = await fetch(fileUrl)
     const buffer = Buffer.from(await pdfRes.arrayBuffer())
-
     const textoCompleto = await extraerTextoPDF(buffer)
 
     if (!textoCompleto || textoCompleto.trim().length === 0) {
@@ -191,7 +183,6 @@ const recibirPDF = async (chatId, documento) => {
       return
     }
 
-    // Dividir en chunks y guardar cada uno
     const chunks = dividirEnChunks(textoCompleto, 300)
 
     for (let i = 0; i < chunks.length; i++) {
@@ -216,7 +207,6 @@ const recibirPDF = async (chatId, documento) => {
   }
 }
 
-// ─── /start ──────────────────────────────────────────────
 const handleStart = async (chatId) => {
   const cobrador = await getCobrador(chatId)
   if (cobrador) { await handleMenu(chatId); return }
@@ -224,21 +214,12 @@ const handleStart = async (chatId) => {
   await sendMessage(chatId, "👋 <b>Bienvenido a Gotas Cobranzas</b>\n\nPara vincularte escribe tu <b>email</b> de cobrador:")
 }
 
-// ─── Verificar credenciales ──────────────────────────────
 const verificarLogin = async (chatId, email, password) => {
   try {
     const cobrador = await User.findOne({ email: email.trim().toLowerCase(), rol: "COBRADOR", habilitado: true })
-    if (!cobrador) {
-      clearSesion(chatId)
-      await sendMessage(chatId, "❌ Email o contraseña incorrectos. Escribe /start para intentar de nuevo.")
-      return
-    }
+    if (!cobrador) { clearSesion(chatId); await sendMessage(chatId, "❌ Email o contraseña incorrectos. Escribe /start para intentar de nuevo."); return }
     const isValid = await bcrypt.compare(password, cobrador.password)
-    if (!isValid) {
-      clearSesion(chatId)
-      await sendMessage(chatId, "❌ Email o contraseña incorrectos. Escribe /start para intentar de nuevo.")
-      return
-    }
+    if (!isValid) { clearSesion(chatId); await sendMessage(chatId, "❌ Email o contraseña incorrectos. Escribe /start para intentar de nuevo."); return }
     cobrador.telegramChatId = String(chatId)
     await cobrador.save()
     clearSesion(chatId)
@@ -250,7 +231,6 @@ const verificarLogin = async (chatId, email, password) => {
   }
 }
 
-// ─── Menú principal ───────────────────────────────────────
 const handleMenu = async (chatId) => {
   const cobrador = await getCobrador(chatId)
   if (!cobrador) { await sendMessage(chatId, "⚠️ No estás vinculado. Escribe /start para iniciar sesión."); return }
@@ -266,7 +246,6 @@ const handleMenu = async (chatId) => {
   })
 }
 
-// ─── CREAR CLIENTE ────────────────────────────────────────
 const iniciarCrearCliente = async (chatId) => {
   const cobrador = await getCobrador(chatId)
   if (!cobrador) { await sendMessage(chatId, "⚠️ No estás vinculado. Escribe /start."); return }
@@ -274,7 +253,6 @@ const iniciarCrearCliente = async (chatId) => {
   await sendMessage(chatId, "👤 <b>Nuevo Cliente</b>\n\nEscribe el <b>nombre completo</b>:")
 }
 
-// ─── CREAR CRÉDITO ────────────────────────────────────────
 const iniciarCrearCredito = async (chatId) => {
   const cobrador = await getCobrador(chatId)
   if (!cobrador) { await sendMessage(chatId, "⚠️ No estás vinculado. Escribe /start."); return }
@@ -284,7 +262,6 @@ const iniciarCrearCredito = async (chatId) => {
   await sendMessage(chatId, "💰 <b>Nuevo Crédito</b>\n\nSelecciona el cliente:", { reply_markup: { inline_keyboard: botones } })
 }
 
-// ─── CONSULTAR CLIENTE ────────────────────────────────────
 const iniciarConsultar = async (chatId) => {
   const cobrador = await getCobrador(chatId)
   if (!cobrador) { await sendMessage(chatId, "⚠️ No estás vinculado. Escribe /start."); return }
@@ -294,7 +271,6 @@ const iniciarConsultar = async (chatId) => {
   await sendMessage(chatId, "🔍 <b>Consultar Cliente</b>\n\nSelecciona el cliente:", { reply_markup: { inline_keyboard: botones } })
 }
 
-// ─── REGISTRAR PAGO ───────────────────────────────────────
 const iniciarPago = async (chatId) => {
   const cobrador = await getCobrador(chatId)
   if (!cobrador) { await sendMessage(chatId, "⚠️ No estás vinculado. Escribe /start."); return }
@@ -304,7 +280,6 @@ const iniciarPago = async (chatId) => {
   await sendMessage(chatId, "💳 <b>Registrar Pago</b>\n\nSelecciona el crédito:", { reply_markup: { inline_keyboard: botones } })
 }
 
-// ─── CALLBACKS ───────────────────────────────────────────
 const handleCallback = async (chatId, data) => {
   if (data.startsWith("credito_cliente_")) {
     const clienteId = data.replace("credito_cliente_", "")
@@ -317,9 +292,7 @@ const handleCallback = async (chatId, data) => {
     const cliente = await Cliente.findById(clienteId)
     const creditos = await Credito.find({ clienteId, estado: "PENDIENTE" })
     const saldoTotal = creditos.reduce((acc, c) => acc + c.saldoPendiente, 0)
-    await sendMessage(chatId,
-      `👤 <b>${cliente.nombre}</b>\n📋 Cédula: ${cliente.cedula}\n📞 Tel: ${cliente.telefono || "N/A"}\n📍 Dir: ${cliente.direccion || "N/A"}\n\n💰 Créditos pendientes: ${creditos.length}\n💳 Saldo total: <b>$${saldoTotal}</b>`
-    )
+    await sendMessage(chatId, `👤 <b>${cliente.nombre}</b>\n📋 Cédula: ${cliente.cedula}\n📞 Tel: ${cliente.telefono || "N/A"}\n📍 Dir: ${cliente.direccion || "N/A"}\n\n💰 Créditos pendientes: ${creditos.length}\n💳 Saldo total: <b>$${saldoTotal}</b>`)
     return
   }
   if (data.startsWith("pago_credito_")) {
@@ -330,7 +303,6 @@ const handleCallback = async (chatId, data) => {
   }
 }
 
-// ─── PASOS CONVERSACIONALES ──────────────────────────────
 const handlePaso = async (chatId, text, sesion) => {
   const cobrador = await getCobrador(chatId)
   if (!cobrador) return
@@ -393,9 +365,7 @@ const handlePaso = async (chatId, text, sesion) => {
     if (credito.saldoPendiente === 0) credito.estado = "PAGADO"
     await credito.save()
     clearSesion(chatId)
-    await sendMessage(chatId,
-      `✅ Abono de <b>$${monto}</b> registrado.\n👤 Cliente: ${credito.clienteId?.nombre}\n💳 Saldo restante: <b>$${credito.saldoPendiente}</b>\n${credito.estado === "PAGADO" ? "🎉 ¡Crédito completamente pagado!" : ""}`
-    )
+    await sendMessage(chatId, `✅ Abono de <b>$${monto}</b> registrado.\n👤 Cliente: ${credito.clienteId?.nombre}\n💳 Saldo restante: <b>$${credito.saldoPendiente}</b>\n${credito.estado === "PAGADO" ? "🎉 ¡Crédito completamente pagado!" : ""}`)
     await handleMenu(chatId)
     return
   }
