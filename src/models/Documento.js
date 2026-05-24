@@ -9,6 +9,7 @@ const documentoSchema = new mongoose.Schema({
   },
   filename: { type: String, required: true },
   texto: { type: String, required: true },
+  chunk: { type: Number, default: 0 },
   fechaSubida: { type: Date, default: Date.now }
 })
 
