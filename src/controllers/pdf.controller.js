@@ -1,9 +1,21 @@
-import pkg from "pdf-parse/lib/pdf-parse.js"
-const pdfParse = pkg
+import PDFParser from "pdf2json"
 import Documento from "../models/Documento.js"
 import mongoose from "mongoose"
 
-// resto igual...
+// ─── Extraer texto del PDF ───────────────────────────────
+const extraerTextoPDF = (buffer) => {
+  return new Promise((resolve, reject) => {
+    const parser = new PDFParser()
+    parser.on("pdfParser_dataReady", (data) => {
+      const texto = data.Pages.map(page =>
+        page.Texts.map(t => decodeURIComponent(t.R[0].T)).join(" ")
+      ).join("\n")
+      resolve(texto)
+    })
+    parser.on("pdfParser_dataError", reject)
+    parser.parseBuffer(buffer)
+  })
+}
 
 // ─── SUBIR PDF ───────────────────────────────────────────
 export const subirPDF = async (req, res) => {
@@ -16,21 +28,13 @@ export const subirPDF = async (req, res) => {
     const oficina = req.body.oficina || "Sin nombre"
     const filename = req.file.originalname
 
-    // Extraer texto del PDF
-    const data = await pdfParse(req.file.buffer)
-    const texto = data.text
+    const texto = await extraerTextoPDF(req.file.buffer)
 
     if (!texto || texto.trim().length === 0) {
       return res.status(400).json({ message: "El PDF no tiene texto extraíble" })
     }
 
-    // Guardar en MongoDB
-    await Documento.create({
-      oficina,
-      officeId,
-      filename,
-      texto
-    })
+    await Documento.create({ oficina, officeId, filename, texto })
 
     res.json({
       message: "PDF subido correctamente",
@@ -65,9 +69,7 @@ export const buscarEnPDF = async (req, res) => {
           }
         }
       },
-      {
-        $match: { officeId: new mongoose.Types.ObjectId(officeId) }
-      },
+      { $match: { officeId: new mongoose.Types.ObjectId(officeId) } },
       {
         $project: {
           oficina: 1,
