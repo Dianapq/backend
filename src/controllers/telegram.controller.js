@@ -25,7 +25,7 @@ const extraerTextoPDF = (buffer) => {
   })
 }
 
-const dividirEnChunks = (texto, tamano = 200) => {
+const dividirEnChunks = (texto, tamano = 100) => {
   const palabras = texto.split(" ")
   const chunks = []
   for (let i = 0; i < palabras.length; i += tamano) {
@@ -183,7 +183,7 @@ const recibirPDF = async (chatId, documento) => {
       return
     }
 
-    const chunks = dividirEnChunks(textoCompleto, 200)
+    const chunks = dividirEnChunks(textoCompleto, 100)
 
     for (let i = 0; i < chunks.length; i++) {
       await Documento.create({
