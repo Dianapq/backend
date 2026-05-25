@@ -48,7 +48,7 @@ export const subirPDF = async (req, res) => {
       return res.status(400).json({ message: "El PDF no tiene texto extraíble" })
     }
 
-    const chunks = dividirEnChunks(texto, 100)
+    const chunks = dividirEnChunks(texto, 80)
 
     for (let i = 0; i < chunks.length; i++) {
       await Documento.create({
