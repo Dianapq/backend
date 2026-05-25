@@ -9,11 +9,8 @@ const extraerTextoPDF = (buffer) => {
     parser.on("pdfParser_dataReady", (data) => {
       const texto = data.Pages.map(page =>
         page.Texts.map(t => {
-          try {
-            return decodeURIComponent(t.R[0].T)
-          } catch {
-            return t.R[0].T  // ← si falla, usa el texto sin decodificar
-          }
+          try { return decodeURIComponent(t.R[0].T) }
+          catch { return t.R[0].T }
         }).join(" ")
       ).join("\n")
       resolve(texto)
@@ -21,6 +18,17 @@ const extraerTextoPDF = (buffer) => {
     parser.on("pdfParser_dataError", reject)
     parser.parseBuffer(buffer)
   })
+}
+
+// ─── Dividir texto en chunks ─────────────────────────────
+const dividirEnChunks = (texto, tamano = 200) => {
+  const palabras = texto.split(" ")
+  const chunks = []
+  for (let i = 0; i < palabras.length; i += tamano) {
+    const chunk = palabras.slice(i, i + tamano).join(" ")
+    if (chunk.trim().length > 0) chunks.push(chunk)
+  }
+  return chunks
 }
 
 // ─── SUBIR PDF ───────────────────────────────────────────
@@ -40,12 +48,22 @@ export const subirPDF = async (req, res) => {
       return res.status(400).json({ message: "El PDF no tiene texto extraíble" })
     }
 
-    await Documento.create({ oficina, officeId, filename, texto })
+    const chunks = dividirEnChunks(texto, 200)
+
+    for (let i = 0; i < chunks.length; i++) {
+      await Documento.create({
+        oficina,
+        officeId,
+        filename,
+        texto: chunks[i],
+        chunk: i
+      })
+    }
 
     res.json({
       message: "PDF subido correctamente",
       filename,
-      caracteres: texto.length
+      chunks: chunks.length
     })
 
   } catch (error) {
@@ -64,14 +82,10 @@ export const buscarEnPDF = async (req, res) => {
       {
         $search: {
           index: "documentos_search",
-          compound: {
-            must: [{
-              text: {
-                query,
-                path: "texto",
-                fuzzy: { maxEdits: 1 }
-              }
-            }]
+          text: {
+            query,
+            path: "texto",
+            fuzzy: { maxEdits: 1 }
           }
         }
       },
@@ -80,11 +94,12 @@ export const buscarEnPDF = async (req, res) => {
         $project: {
           oficina: 1,
           filename: 1,
+          chunk: 1,
           score: { $meta: "searchScore" },
-          extracto: { $substrCP: ["$texto", 0, 500] }
+          texto: 1
         }
       },
-      { $limit: 3 }
+      { $limit: 1 }
     ])
 
     res.json(resultados)
@@ -98,7 +113,7 @@ export const buscarEnPDF = async (req, res) => {
 export const listarPDFs = async (req, res) => {
   try {
     const docs = await Documento.find({ officeId: req.user.officeId })
-      .select("filename oficina fechaSubida")
+      .select("filename oficina fechaSubida chunk")
       .sort({ fechaSubida: -1 })
 
     res.json(docs)
